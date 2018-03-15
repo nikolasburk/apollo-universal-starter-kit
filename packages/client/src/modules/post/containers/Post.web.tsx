@@ -1,25 +1,61 @@
 import React from 'react';
-import PropTypes from 'prop-types';
+import { SubscribeToMoreOptions, ApolloError } from 'apollo-client';
 import { graphql, compose } from 'react-apollo';
 import update from 'immutability-helper';
 
-import PostList from '../components/PostList';
+import PostList from '../components/PostList.web';
 
 import POSTS_QUERY from '../graphql/PostsQuery.graphql';
 import POSTS_SUBSCRIPTION from '../graphql/PostsSubscription.graphql';
 import DELETE_POST from '../graphql/DeletePost.graphql';
 
-export function AddPost(prev, node) {
+interface Post {
+  id: number;
+  title: string;
+  content: string;
+  __typename: string;
+}
+
+interface Edge {
+  cursor?: number;
+  node: Post;
+  __typename: string;
+}
+
+interface PageInfo {
+  endCursor?: number;
+  hasNextPage: boolean;
+  __typename: string;
+}
+
+interface Posts {
+  edges: Edge[];
+  pageInfo: PageInfo;
+  totalCount: number;
+  __typename: string;
+}
+
+interface PostProps {
+  loading: boolean;
+  posts: Posts;
+  subscribeToMore: (option: SubscribeToMoreOptions) => void;
+}
+
+interface PostQuery {
+  posts: Posts;
+}
+
+export function AddPost(prev: PostQuery, node: Post) {
   // ignore if duplicate
-  if (prev.posts.edges.some(post => node.id === post.cursor)) {
+  if (prev.posts.edges.some((post: any) => node.id === post.cursor)) {
     return prev;
   }
 
-  const filteredPosts = prev.posts.edges.filter(post => post.node.id !== null);
+  const filteredPosts: Edge[] = prev.posts.edges.filter((post: any) => post.node.id !== null);
 
-  const edge = {
+  const edge: Edge = {
     cursor: node.id,
-    node: node,
+    node,
     __typename: 'PostEdges'
   };
 
@@ -35,8 +71,8 @@ export function AddPost(prev, node) {
   });
 }
 
-function DeletePost(prev, id) {
-  const index = prev.posts.edges.findIndex(x => x.node.id === id);
+function DeletePost(prev: PostQuery, id: number) {
+  const index: number = prev.posts.edges.findIndex((x: Edge) => x.node.id === id);
 
   // ignore if not found
   if (index < 0) {
@@ -55,22 +91,17 @@ function DeletePost(prev, id) {
   });
 }
 
-class Post extends React.Component {
-  static propTypes = {
-    loading: PropTypes.bool.isRequired,
-    posts: PropTypes.object,
-    subscribeToMore: PropTypes.func.isRequired
-  };
-
-  constructor(props) {
+class Post extends React.Component<PostProps, any> {
+  public subscription: any;
+  constructor(props: PostProps) {
     super(props);
     this.subscription = null;
   }
 
-  componentWillReceiveProps(nextProps) {
+  public componentWillReceiveProps(nextProps: PostProps) {
     if (!nextProps.loading) {
-      const endCursor = this.props.posts ? this.props.posts.pageInfo.endCursor : 0;
-      const nextEndCursor = nextProps.posts.pageInfo.endCursor;
+      const endCursor: number = this.props.posts ? this.props.posts.pageInfo.endCursor : 0;
+      const nextEndCursor: number = nextProps.posts.pageInfo.endCursor;
 
       // Check if props have changed and, if necessary, stop the subscription
       if (this.subscription && endCursor !== nextEndCursor) {
@@ -85,22 +116,21 @@ class Post extends React.Component {
     }
   }
 
-  componentWillUnmount() {
+  public componentWillUnmount() {
     if (this.subscription) {
       // unsubscribe
       this.subscription();
     }
   }
 
-  subscribeToPostList = endCursor => {
+  public subscribeToPostList = (endCursor: number) => {
     const { subscribeToMore } = this.props;
 
     this.subscription = subscribeToMore({
       document: POSTS_SUBSCRIPTION,
       variables: { endCursor },
-      updateQuery: (prev, { subscriptionData: { data: { postsUpdated: { mutation, node } } } }) => {
-        let newResult = prev;
-
+      updateQuery: (prev: PostQuery, { subscriptionData: { data: { postsUpdated: { mutation, node } } } }) => {
+        let newResult: PostQuery = prev;
         if (mutation === 'CREATED') {
           newResult = AddPost(prev, node);
         } else if (mutation === 'DELETED') {
@@ -112,13 +142,13 @@ class Post extends React.Component {
     });
   };
 
-  render() {
+  public render() {
     return <PostList {...this.props} />;
   }
 }
 
 export default compose(
-  graphql(POSTS_QUERY, {
+  graphql<PostQuery>(POSTS_QUERY, {
     options: () => {
       return {
         variables: { limit: 10, after: 0 }
@@ -149,24 +179,26 @@ export default compose(
           }
         });
       };
-      if (error) throw new Error(error);
+      if (error) {
+        throw new ApolloError(error);
+      }
       return { loading, posts, subscribeToMore, loadMoreRows };
     }
   }),
   graphql(DELETE_POST, {
     props: ({ mutate }) => ({
-      deletePost: id => {
+      deletePost: (id: number) => {
         mutate({
           variables: { id },
           optimisticResponse: {
             __typename: 'Mutation',
             deletePost: {
-              id: id,
+              id,
               __typename: 'Post'
             }
           },
           updateQueries: {
-            posts: (prev, { mutationResult: { data: { deletePost } } }) => {
+            posts: (prev: PostQuery, { mutationResult: { data: { deletePost } } }) => {
               return DeletePost(prev, deletePost.id);
             }
           }
