@@ -1,9 +1,9 @@
 import React from 'react';
-import PropTypes from 'prop-types';
+import { SubscribeToMoreOptions } from 'apollo-client';
 import { graphql, compose } from 'react-apollo';
 import update from 'immutability-helper';
 
-import PostCommentsView from '../components/PostCommentsView';
+import PostCommentsView from '../components/PostCommentsView.web';
 
 import ADD_COMMENT from '../graphql/AddComment.graphql';
 import EDIT_COMMENT from '../graphql/EditComment.graphql';
@@ -12,13 +12,47 @@ import COMMENT_SUBSCRIPTION from '../graphql/CommentSubscription.graphql';
 import ADD_COMMENT_CLIENT from '../graphql/AddComment.client.graphql';
 import COMMENT_QUERY_CLIENT from '../graphql/CommentQuery.client.graphql';
 
-function AddComment(prev, node) {
+interface Comment {
+  id?: number;
+  content: string;
+  __typename?: string;
+}
+
+interface CommentResponse {
+  comment: Comment;
+}
+
+interface PostCommentsProps {
+  postId: number;
+  comments: Comment[];
+  comment: Comment;
+  onCommentSelect: (comment: Comment) => void;
+  subscribeToMore: (option: SubscribeToMoreOptions) => void;
+}
+
+interface PostId {
+  postId: number;
+}
+
+interface Post {
+  comments: Comment[];
+  content: string;
+  id: number;
+  title: string;
+  __typename?: string;
+}
+
+interface PostQuery {
+  post: Post;
+}
+
+function AddComment(prev: PostQuery, node: Comment) {
   // ignore if duplicate
-  if (prev.post.comments.some(comment => comment.id === node.id)) {
+  if (prev.post.comments.some((comment: Comment) => comment.id === node.id)) {
     return prev;
   }
 
-  const filteredComments = prev.post.comments.filter(comment => comment.id);
+  const filteredComments = prev.post.comments.filter((comment: Comment) => comment.id);
   return update(prev, {
     post: {
       comments: {
@@ -28,8 +62,8 @@ function AddComment(prev, node) {
   });
 }
 
-function DeleteComment(prev, id) {
-  const index = prev.post.comments.findIndex(x => x.id === id);
+function DeleteComment(prev: PostQuery, id: number) {
+  const index = prev.post.comments.findIndex((comment: Comment) => comment.id === id);
 
   // ignore if not found
   if (index < 0) {
@@ -45,21 +79,14 @@ function DeleteComment(prev, id) {
   });
 }
 
-class PostComments extends React.Component {
-  static propTypes = {
-    postId: PropTypes.number.isRequired,
-    comments: PropTypes.array.isRequired,
-    comment: PropTypes.object.isRequired,
-    onCommentSelect: PropTypes.func.isRequired,
-    subscribeToMore: PropTypes.func.isRequired
-  };
-
-  constructor(props) {
+class PostComments extends React.Component<PostCommentsProps, any> {
+  public subscription: any;
+  constructor(props: PostCommentsProps) {
     super(props);
     this.subscription = null;
   }
 
-  componentWillReceiveProps(nextProps) {
+  public componentWillReceiveProps(nextProps: PostCommentsProps) {
     // Check if props have changed and, if necessary, stop the subscription
     if (this.subscription && this.props.postId !== nextProps.postId) {
       this.subscription = null;
@@ -71,7 +98,7 @@ class PostComments extends React.Component {
     }
   }
 
-  componentWillUnmount() {
+  public componentWillUnmount() {
     this.props.onCommentSelect({ id: null, content: '' });
 
     if (this.subscription) {
@@ -80,13 +107,13 @@ class PostComments extends React.Component {
     }
   }
 
-  subscribeToCommentList = postId => {
+  public subscribeToCommentList = (postId: number) => {
     const { subscribeToMore } = this.props;
 
     this.subscription = subscribeToMore({
       document: COMMENT_SUBSCRIPTION,
       variables: { postId },
-      updateQuery: (prev, { subscriptionData: { data: { commentUpdated: { mutation, id, node } } } }) => {
+      updateQuery: (prev: PostQuery, { subscriptionData: { data: { commentUpdated: { mutation, id, node } } } }) => {
         let newResult = prev;
 
         if (mutation === 'CREATED') {
@@ -100,7 +127,7 @@ class PostComments extends React.Component {
     });
   };
 
-  render() {
+  public render() {
     return <PostCommentsView {...this.props} />;
   }
 }
@@ -108,7 +135,7 @@ class PostComments extends React.Component {
 const PostCommentsWithApollo = compose(
   graphql(ADD_COMMENT, {
     props: ({ mutate }) => ({
-      addComment: (content, postId) =>
+      addComment: (content: string, postId: number) =>
         mutate({
           variables: { input: { content, postId } },
           optimisticResponse: {
@@ -116,11 +143,11 @@ const PostCommentsWithApollo = compose(
             addComment: {
               __typename: 'Comment',
               id: null,
-              content: content
+              content
             }
           },
           updateQueries: {
-            post: (prev, { mutationResult: { data: { addComment } } }) => {
+            post: (prev: PostQuery, { mutationResult: { data: { addComment } } }) => {
               if (prev.post) {
                 return AddComment(prev, addComment);
               }
@@ -129,36 +156,36 @@ const PostCommentsWithApollo = compose(
         })
     })
   }),
-  graphql(EDIT_COMMENT, {
+  graphql<any, PostId>(EDIT_COMMENT, {
     props: ({ ownProps: { postId }, mutate }) => ({
-      editComment: (id, content) =>
+      editComment: (id: number, content: string) =>
         mutate({
           variables: { input: { id, postId, content } },
           optimisticResponse: {
             __typename: 'Mutation',
             editComment: {
               __typename: 'Comment',
-              id: id,
-              content: content
+              id,
+              content
             }
           }
         })
     })
   }),
-  graphql(DELETE_COMMENT, {
+  graphql<any, PostId>(DELETE_COMMENT, {
     props: ({ ownProps: { postId }, mutate }) => ({
-      deleteComment: id =>
+      deleteComment: (id: number) =>
         mutate({
           variables: { input: { id, postId } },
           optimisticResponse: {
             __typename: 'Mutation',
             deleteComment: {
               __typename: 'Comment',
-              id: id
+              id
             }
           },
           updateQueries: {
-            post: (prev, { mutationResult: { data: { deleteComment } } }) => {
+            post: (prev: PostQuery, { mutationResult: { data: { deleteComment } } }) => {
               if (prev.post) {
                 return DeleteComment(prev, deleteComment.id);
               }
@@ -169,12 +196,12 @@ const PostCommentsWithApollo = compose(
   }),
   graphql(ADD_COMMENT_CLIENT, {
     props: ({ mutate }) => ({
-      onCommentSelect: comment => {
-        mutate({ variables: { comment: comment } });
+      onCommentSelect: (comment: Comment) => {
+        mutate({ variables: { comment } });
       }
     })
   }),
-  graphql(COMMENT_QUERY_CLIENT, {
+  graphql<CommentResponse>(COMMENT_QUERY_CLIENT, {
     props: ({ data: { comment } }) => ({ comment })
   })
 )(PostComments);
